@@ -1,8 +1,13 @@
 export type Label = {
-  id: string;
   name: string;
   color: string;
 };
 
-/** ファイルパス -> ラベルID の配列 */
+/** フォルダからの相対パス -> ラベル名の配列 */
 export type Assignments = Record<string, string[]>;
+
+/** labels.json の中身 */
+export type LabelData = {
+  labels: Label[];
+  assignments: Assignments;
+};
