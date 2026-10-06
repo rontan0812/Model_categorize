@@ -160,6 +160,12 @@ export async function loadModel(
         if (!hasDrawable(rhino)) {
           throw new Error("表示できる形状がありません。Rhino で表示用メッシュを含めて保存すると表示できます");
         }
+        // 部品一覧でレイヤー名ごとにまとめられるようにする
+        const layers = (rhino.userData.layers ?? []) as { name?: string; fullPath?: string }[];
+        rhino.traverse((o) => {
+          const layer = layers[o.userData.attributes?.layerIndex];
+          if (layer) o.userData.partName = layer.fullPath || layer.name;
+        });
         // Rhino は Z 軸が上なので、Y 軸が上の three.js に合わせて起こす
         rhino.rotation.x = -Math.PI / 2;
         object = new THREE.Group().add(rhino);
