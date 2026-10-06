@@ -113,6 +113,15 @@ kbd {
 }
 .chip.on { background: var(--c); color: #fff; border-color: var(--c); }
 .chip.on:hover:not(:disabled) { background: var(--c); filter: brightness(1.1); }
+.chip.out {
+  border-style: dashed; color: var(--muted); text-decoration: line-through;
+  text-decoration-color: var(--c);
+}
+.hint { margin: 8px 0 0; }
+.segmented { display: inline-flex; margin-top: 8px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.segmented button { border: none; border-radius: 0; padding: 4px 10px; font-size: 12px; }
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button.on { background: var(--accent); color: #fff; }
 .chip.partial { background: color-mix(in srgb, var(--c) 30%, transparent); }
 .chip.on kbd { color: var(--text); }
 

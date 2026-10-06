@@ -24,6 +24,9 @@ const ModelViewer = dynamic(() => import("./ModelViewer"), { ssr: false });
 const PALETTE = ["#e5484d", "#f76b15", "#ffc53d", "#30a46c", "#12a594", "#0090ff", "#6e56cf", "#d6409f", "#8d8d8d"];
 const UNLABELED = "\u0000unlabeled";
 
+/** 絞り込みの状態: 含む / 除外 */
+type FilterState = "in" | "out";
+
 function formatBytes(n: number) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
@@ -51,7 +54,8 @@ export default function App() {
   const [data, setData] = useState<LabelData>(emptyData);
   const [selected, setSelected] = useState<string | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [filterLabels, setFilterLabels] = useState<Set<string>>(new Set());
+  const [filterLabels, setFilterLabels] = useState<Map<string, FilterState>>(new Map());
+  const [matchMode, setMatchMode] = useState<"and" | "or">("and");
   const [search, setSearch] = useState("");
   const [newLabelName, setNewLabelName] = useState("");
   const [error, setError] = useState("");
@@ -88,7 +92,7 @@ export default function App() {
     if (!opened) return;
     setFolder(opened);
     setChecked(new Set());
-    setFilterLabels(new Set());
+    setFilterLabels(new Map());
     const models = [...opened.files.keys()].filter(isModelFile).sort();
     setSelected(models[0] ?? null);
     try {
@@ -139,12 +143,16 @@ export default function App() {
     return modelPaths.filter((p) => {
       if (q && !p.toLowerCase().includes(q)) return false;
       const names = labelsOf(p);
-      for (const f of filterLabels) {
-        if (f === UNLABELED ? names.length > 0 : !names.includes(f)) return false;
+      const has = (f: string) => (f === UNLABELED ? names.length === 0 : names.includes(f));
+      const include: string[] = [];
+      for (const [f, state] of filterLabels) {
+        if (state === "out" && has(f)) return false;
+        if (state === "in") include.push(f);
       }
-      return true;
+      if (include.length === 0) return true;
+      return matchMode === "and" ? include.every(has) : include.some(has);
     });
-  }, [modelPaths, search, filterLabels, labelsOf]);
+  }, [modelPaths, search, filterLabels, matchMode, labelsOf]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { [UNLABELED]: 0 };
@@ -192,10 +200,11 @@ export default function App() {
       return;
     }
     setFilterLabels((prev) => {
-      if (!prev.has(label.name)) return prev;
-      const next = new Set(prev);
+      const state = prev.get(label.name);
+      if (!state) return prev;
+      const next = new Map(prev);
       next.delete(label.name);
-      next.add(name);
+      next.set(name, state);
       return next;
     });
     change(updateLabel(label.name, { ...label, name }));
@@ -208,18 +217,21 @@ export default function App() {
       : `ラベル「${label.name}」を削除しますか？`;
     if (!window.confirm(msg)) return;
     setFilterLabels((prev) => {
-      const next = new Set(prev);
+      const next = new Map(prev);
       next.delete(label.name);
       return next;
     });
     change(deleteLabel(label.name));
   };
 
+  /** クリックごとに 含む → 除外 → 解除（未ラベルは 含む ↔ 解除） */
   const toggleFilter = (name: string) =>
     setFilterLabels((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      const next = new Map(prev);
+      const state = prev.get(name);
+      if (!state) next.set(name, "in");
+      else if (state === "in" && name !== UNLABELED) next.set(name, "out");
+      else next.delete(name);
       return next;
     });
 
@@ -383,23 +395,35 @@ export default function App() {
           <section>
             <h2>絞り込み</h2>
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ファイル名で検索" />
+            <p className="muted small hint">ラベルをクリック: 含む → 除外 → 解除</p>
             <div className="chips">
               <button className={`chip ${filterLabels.has(UNLABELED) ? "on" : ""}`} onClick={() => toggleFilter(UNLABELED)}>
                 未ラベル ({counts[UNLABELED]})
               </button>
-              {labels.map((l) => (
-                <button
-                  key={l.name}
-                  className={`chip ${filterLabels.has(l.name) ? "on" : ""}`}
-                  style={{ "--c": l.color } as React.CSSProperties}
-                  onClick={() => toggleFilter(l.name)}
-                >
-                  {l.name}
-                </button>
-              ))}
+              {labels.map((l) => {
+                const state = filterLabels.get(l.name);
+                return (
+                  <button
+                    key={l.name}
+                    className={`chip ${state === "in" ? "on" : state === "out" ? "out" : ""}`}
+                    style={{ "--c": l.color } as React.CSSProperties}
+                    onClick={() => toggleFilter(l.name)}
+                    title={state === "in" ? "含む（もう一度押すと除外）" : state === "out" ? "除外（もう一度押すと解除）" : "クリックで絞り込み"}
+                  >
+                    {state === "out" && "除外: "}
+                    {l.name}
+                  </button>
+                );
+              })}
             </div>
+            {[...filterLabels.values()].filter((v) => v === "in").length >= 2 && (
+              <div className="segmented">
+                <button className={matchMode === "and" ? "on" : ""} onClick={() => setMatchMode("and")}>すべて含む</button>
+                <button className={matchMode === "or" ? "on" : ""} onClick={() => setMatchMode("or")}>どれか含む</button>
+              </div>
+            )}
             {filterLabels.size > 0 && (
-              <button className="link" onClick={() => setFilterLabels(new Set())}>絞り込みを解除</button>
+              <button className="link" onClick={() => setFilterLabels(new Map())}>絞り込みを解除</button>
             )}
           </section>
 
