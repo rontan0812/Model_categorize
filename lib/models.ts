@@ -7,9 +7,32 @@ import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
 import { ThreeMFLoader } from "three/addons/loaders/3MFLoader.js";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
+import { Rhino3dmLoader } from "three/addons/loaders/3DMLoader.js";
 
 /** 一覧に表示する 3D モデルの拡張子 */
-export const MODEL_EXTENSIONS = ["stl", "obj", "fbx", "gltf", "glb", "ply", "3mf", "dae"] as const;
+export const MODEL_EXTENSIONS = ["stl", "obj", "fbx", "gltf", "glb", "ply", "3mf", "dae", "3dm"] as const;
+
+// Rhino (.3dm) の読み込みには rhino3dm (WebAssembly) を使う。
+// ビルド時に public/rhino3dm へコピーしたもの（scripts/copy-rhino3dm.mjs）を読み込む。
+const RHINO3DM_PATH = "/rhino3dm/";
+let rhinoLoader: Rhino3dmLoader | null = null;
+
+function getRhinoLoader() {
+  if (!rhinoLoader) {
+    rhinoLoader = new Rhino3dmLoader();
+    rhinoLoader.setLibraryPath(RHINO3DM_PATH);
+  }
+  return rhinoLoader;
+}
+
+/** 表示できる形（メッシュ・線・点）が含まれているか */
+function hasDrawable(object: THREE.Object3D) {
+  let found = false;
+  object.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh || (o as THREE.Line).isLine || (o as THREE.Points).isPoints) found = true;
+  });
+  return found;
+}
 
 export function extOf(path: string): string {
   const i = path.lastIndexOf(".");
@@ -125,6 +148,21 @@ export async function loadModel(
         const collada = new ColladaLoader(manager).parse(await file.text(), "");
         if (!collada) throw new Error("Collada の読み込みに失敗しました");
         object = collada.scene;
+        break;
+      }
+      case "3dm": {
+        let rhino: THREE.Object3D;
+        try {
+          rhino = await getRhinoLoader().parseAsync(await file.arrayBuffer());
+        } catch (e) {
+          throw new Error(`Rhino ファイルを読み込めませんでした: ${e instanceof Error ? e.message : e}`);
+        }
+        if (!hasDrawable(rhino)) {
+          throw new Error("表示できる形状がありません。Rhino で表示用メッシュを含めて保存すると表示できます");
+        }
+        // Rhino は Z 軸が上なので、Y 軸が上の three.js に合わせて起こす
+        rhino.rotation.x = -Math.PI / 2;
+        object = new THREE.Group().add(rhino);
         break;
       }
       default:
