@@ -209,3 +209,9 @@ button.small { font-size: 11px; }
 .clip-controls { display: inline-flex; align-items: center; gap: 4px; }
 .clip-controls input[type="range"] { width: 120px; }
 .measure { color: var(--danger); font-weight: 600; }
+
+.tag.untouched {
+  background: transparent; color: var(--muted);
+  border: 1px dashed var(--muted); padding: 0 6px;
+}
+.assign-actions { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; margin-top: 4px; }

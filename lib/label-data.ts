@@ -2,7 +2,7 @@ import type { Label, LabelData } from "./types";
 
 export const LABEL_FILE = "labels.json";
 
-export const emptyData = (): LabelData => ({ labels: [], assignments: {} });
+export const emptyData = (): LabelData => ({ labels: [], assignments: {}, manual: [] });
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -10,7 +10,7 @@ const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 export function normalizeData(v: unknown): LabelData {
   const out = emptyData();
   if (!v || typeof v !== "object") return out;
-  const { labels, assignments } = v as Record<string, unknown>;
+  const { labels, assignments, manual } = v as Record<string, unknown>;
   if (Array.isArray(labels)) {
     for (const l of labels) {
       const name = typeof l?.name === "string" ? l.name.trim() : "";
@@ -25,6 +25,12 @@ export function normalizeData(v: unknown): LabelData {
       if (valid.length > 0) out.assignments[path] = valid;
     }
   }
+  if (Array.isArray(manual)) {
+    out.manual = [...new Set(manual.filter((p): p is string => typeof p === "string"))].sort();
+  } else {
+    // この項目ができる前のファイルは、付いているラベルがすべて手動で付けたもの
+    out.manual = Object.keys(out.assignments).sort();
+  }
   return out;
 }
 
@@ -37,7 +43,11 @@ export function serializeData(data: LabelData): string {
     .map((path) => `    ${j(path)}: ${j(data.assignments[path])}`);
   const block = (lines: string[], open: string, close: string) =>
     lines.length === 0 ? open + close : `${open}\n${lines.join(",\n")}\n  ${close}`;
-  return `{\n  "labels": ${block(labels, "[", "]")},\n  "assignments": ${block(assignments, "{", "}")}\n}\n`;
+  const manual = [...data.manual].sort().map((path) => `    ${j(path)}`);
+  return (
+    `{\n  "labels": ${block(labels, "[", "]")},\n  "assignments": ${block(assignments, "{", "}")},\n` +
+    `  "manual": ${block(manual, "[", "]")}\n}\n`
+  );
 }
 
 // ---- 変更操作 ----
@@ -71,20 +81,40 @@ export const deleteLabel = (name: string): Change => (d) => {
   }
 };
 
-/** ファイルごとにラベルを足す/外す */
-export const editAssignments = (paths: string[], add: string[], remove: string[]): Change => (d) => {
+/** 手動操作済みの印を付ける / 外す */
+export const setManual = (paths: string[], value: boolean): Change => (d) => {
+  const set = new Set(d.manual);
+  for (const p of paths) {
+    if (value) set.add(p);
+    else set.delete(p);
+  }
+  d.manual = [...set].sort();
+};
+
+/**
+ * ファイルごとにラベルを足す/外す。
+ * 画面からの操作は手動扱い（manual: true）。自動ラベル付けからは manual: false で呼ぶ。
+ */
+export const editAssignments = (
+  paths: string[],
+  add: string[],
+  remove: string[],
+  { manual = true }: { manual?: boolean } = {},
+): Change => (d) => {
   for (const path of paths) {
     const cur = (d.assignments[path] ?? []).filter((n) => !remove.includes(n));
     const next = [...new Set([...cur, ...add])];
     if (next.length === 0) delete d.assignments[path];
     else d.assignments[path] = next;
   }
+  if (manual) setManual(paths, true)(d);
 };
 
 /** 取り込んだデータを足し合わせる（同じファイルの割り当ては取り込んだ側で上書き） */
 export const mergeData = (incoming: LabelData): Change => (d) => {
   for (const l of incoming.labels) if (!d.labels.some((x) => x.name === l.name)) d.labels.push(l);
   Object.assign(d.assignments, incoming.assignments);
+  d.manual = [...new Set([...d.manual, ...incoming.manual])].sort();
 };
 
 export function applyChange(data: LabelData, change: Change): LabelData {

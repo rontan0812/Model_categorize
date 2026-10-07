@@ -9,6 +9,7 @@ import {
   type Change,
   deleteLabel,
   editAssignments,
+  setManual,
   emptyData,
   LABEL_FILE,
   mergeData,
@@ -23,6 +24,8 @@ const ModelViewer = dynamic(() => import("./ModelViewer"), { ssr: false });
 
 const PALETTE = ["#e5484d", "#f76b15", "#ffc53d", "#30a46c", "#12a594", "#0090ff", "#6e56cf", "#d6409f", "#8d8d8d"];
 const UNLABELED = "\u0000unlabeled";
+/** 絞り込み用: 一度も手動でラベル操作していないファイル */
+const UNTOUCHED = "\u0000untouched";
 
 /** 絞り込みの状態: 含む / 除外 */
 type FilterState = "in" | "out";
@@ -137,13 +140,15 @@ export default function App() {
     (path: string) => (data.assignments[path] ?? []).filter((n) => labelByName.has(n)),
     [data.assignments, labelByName],
   );
+  const manualSet = useMemo(() => new Set(data.manual), [data.manual]);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return modelPaths.filter((p) => {
       if (q && !p.toLowerCase().includes(q)) return false;
       const names = labelsOf(p);
-      const has = (f: string) => (f === UNLABELED ? names.length === 0 : names.includes(f));
+      const has = (f: string) =>
+        f === UNLABELED ? names.length === 0 : f === UNTOUCHED ? !manualSet.has(p) : names.includes(f);
       const include: string[] = [];
       for (const [f, state] of filterLabels) {
         if (state === "out" && has(f)) return false;
@@ -152,17 +157,18 @@ export default function App() {
       if (include.length === 0) return true;
       return matchMode === "and" ? include.every(has) : include.some(has);
     });
-  }, [modelPaths, search, filterLabels, matchMode, labelsOf]);
+  }, [modelPaths, search, filterLabels, matchMode, labelsOf, manualSet]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { [UNLABELED]: 0 };
+    const c: Record<string, number> = { [UNLABELED]: 0, [UNTOUCHED]: 0 };
     for (const p of modelPaths) {
       const names = labelsOf(p);
       if (names.length === 0) c[UNLABELED]++;
+      if (!manualSet.has(p)) c[UNTOUCHED]++;
       for (const n of names) c[n] = (c[n] ?? 0) + 1;
     }
     return c;
-  }, [modelPaths, labelsOf]);
+  }, [modelPaths, labelsOf, manualSet]);
 
   // ラベル付けの対象: チェックしたファイル、無ければ選択中のファイル
   const targets = useMemo(
@@ -180,6 +186,13 @@ export default function App() {
     if (targets.length === 0) return;
     change(editAssignments(targets, [], labels.map((l) => l.name)));
   };
+
+  /** ラベルは変えずに、手動操作済み（確認済み）の印だけを付け外しする */
+  const markManual = (value: boolean) => {
+    if (targets.length === 0) return;
+    change(setManual(targets, value));
+  };
+  const allTargetsManual = targets.length > 0 && targets.every((p) => manualSet.has(p));
 
   const onAddLabel = () => {
     const name = newLabelName.trim();
@@ -247,8 +260,8 @@ export default function App() {
   const toggleAllVisible = () => setChecked(allVisibleChecked ? new Set() : new Set(visible));
 
   const exportCsv = () => {
-    const rows = [["path", "labels"]];
-    for (const p of modelPaths) rows.push([p, labelsOf(p).join(";")]);
+    const rows = [["path", "labels", "manual"]];
+    for (const p of modelPaths) rows.push([p, labelsOf(p).join(";"), manualSet.has(p) ? "済" : "未操作"]);
     download(`${folder?.name || "labels"}.csv`, "﻿" + rows.map((r) => r.map(csvCell).join(",")).join("\n"), "text/csv");
   };
 
@@ -400,6 +413,14 @@ export default function App() {
               <button className={`chip ${filterLabels.has(UNLABELED) ? "on" : ""}`} onClick={() => toggleFilter(UNLABELED)}>
                 未ラベル ({counts[UNLABELED]})
               </button>
+              <button
+                className={`chip ${filterLabels.get(UNTOUCHED) === "in" ? "on" : filterLabels.get(UNTOUCHED) === "out" ? "out" : ""}`}
+                onClick={() => toggleFilter(UNTOUCHED)}
+                title="一度も手動でラベル操作していないファイル（含む → 除外 → 解除）"
+              >
+                {filterLabels.get(UNTOUCHED) === "out" && "除外: "}
+                手動未操作 ({counts[UNTOUCHED]})
+              </button>
               {labels.map((l) => {
                 const state = filterLabels.get(l.name);
                 return (
@@ -486,6 +507,9 @@ export default function App() {
                         {p.slice(p.lastIndexOf("/") + 1)}
                       </span>
                       <span className="tags">
+                        {!manualSet.has(p) && (
+                          <span className="tag untouched" title="一度も手動でラベル操作していません">未操作</span>
+                        )}
                         {labelsOf(p).map((n) => (
                           <span key={n} className="tag" style={{ "--c": labelByName.get(n)!.color } as React.CSSProperties}>
                             {n}
@@ -531,9 +555,21 @@ export default function App() {
               })}
               {folder && labels.length === 0 && <span className="muted small">左の「ラベル」から作成してください</span>}
             </div>
-            {targets.some((p) => labelsOf(p).length > 0) && (
-              <button className="link" onClick={clearLabels}>ラベルをすべて外す</button>
-            )}
+            <div className="assign-actions">
+              {targets.some((p) => labelsOf(p).length > 0) && (
+                <button className="link" onClick={clearLabels}>ラベルをすべて外す</button>
+              )}
+              {targets.length > 0 &&
+                (allTargetsManual ? (
+                  <span className="muted small">
+                    手動操作済み・<button className="link small" onClick={() => markManual(false)}>未操作に戻す</button>
+                  </span>
+                ) : (
+                  <button className="link" onClick={() => markManual(true)} title="ラベルはそのままで、手動操作済みにします">
+                    確認済みにする（ラベルはそのまま）
+                  </button>
+                ))}
+            </div>
           </div>
         </section>
       </div>
