@@ -14,15 +14,16 @@ import {
   LABEL_FILE,
   mergeData,
   normalizeData,
+  PALETTE,
   serializeData,
   updateLabel,
 } from "@/lib/label-data";
 import { extOf, isModelFile, MODEL_EXTENSIONS } from "@/lib/models";
+import { applyRecipeLabels, scanRecipes } from "@/lib/recipes";
 import type { Label, LabelData } from "@/lib/types";
 
 const ModelViewer = dynamic(() => import("./ModelViewer"), { ssr: false });
 
-const PALETTE = ["#e5484d", "#f76b15", "#ffc53d", "#30a46c", "#12a594", "#0090ff", "#6e56cf", "#d6409f", "#8d8d8d"];
 const UNLABELED = "\u0000unlabeled";
 /** 絞り込み用: 一度も手動でラベル操作していないファイル */
 const UNTOUCHED = "\u0000untouched";
@@ -62,6 +63,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [newLabelName, setNewLabelName] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [writable, setWritable] = useState(true);
   const folderInput = useRef<HTMLInputElement>(null);
   const importInput = useRef<HTMLInputElement>(null);
@@ -96,13 +98,38 @@ export default function App() {
     setFolder(opened);
     setChecked(new Set());
     setFilterLabels(new Map());
+    setNotice("");
     const models = [...opened.files.keys()].filter(isModelFile).sort();
     setSelected(models[0] ?? null);
+    let loaded: LabelData;
     try {
-      setData(await opened.store.load());
+      loaded = await opened.store.load();
+      setData(loaded);
     } catch (e) {
       setData(emptyData());
       setError(`${LABEL_FILE} の読み込みに失敗しました: ${errMsg(e)}`);
+      return;
+    }
+    await autoLabelFromRecipes(opened, models, loaded);
+  };
+
+  /** recipes/ の JSON の ops を、手動未操作のモデルにラベルとして付ける */
+  const autoLabelFromRecipes = async (opened: OpenedFolder, models: string[], loaded: LabelData) => {
+    try {
+      const scan = await scanRecipes(models, opened.files);
+      if (scan.labels.size === 0 && scan.broken.length === 0) return;
+      const c = applyRecipeLabels(scan.labels);
+      // 変化が無ければ保存しない
+      if (serializeData(applyChange(loaded, c)) !== serializeData(loaded)) setData(await opened.store.update(c));
+      const manual = new Set(loaded.manual);
+      const applied = [...scan.labels.keys()].filter((p) => !manual.has(p)).length;
+      const parts = [`レシピ ${scan.labels.size} 件の ops を、手動未操作の ${applied} 件のラベルに反映しました`];
+      if (scan.labels.size > applied) parts.push(`手動操作済みの ${scan.labels.size - applied} 件はそのままです`);
+      if (scan.missing > 0) parts.push(`レシピが見つからないモデル ${scan.missing} 件`);
+      if (scan.broken.length > 0) parts.push(`読めなかったレシピ ${scan.broken.length} 件（${scan.broken.slice(0, 3).join(", ")}${scan.broken.length > 3 ? " ほか" : ""}）`);
+      setNotice(parts.join("。"));
+    } catch (e) {
+      setError(`レシピからのラベル付けに失敗しました: ${errMsg(e)}`);
     }
   };
 
@@ -355,6 +382,11 @@ export default function App() {
         />
       </header>
 
+      {notice && (
+        <div className="notice-bar" onClick={() => setNotice("")}>
+          {notice}（クリックで閉じる）
+        </div>
+      )}
       {error && (
         <div className="error-bar" onClick={() => setError("")}>
           {error}（クリックで閉じる）

@@ -2,6 +2,9 @@ import type { Label, LabelData } from "./types";
 
 export const LABEL_FILE = "labels.json";
 
+/** 新しいラベルに順番に割り当てる色 */
+export const PALETTE = ["#e5484d", "#f76b15", "#ffc53d", "#30a46c", "#12a594", "#0090ff", "#6e56cf", "#d6409f", "#8d8d8d"];
+
 export const emptyData = (): LabelData => ({ labels: [], assignments: {}, manual: [] });
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;

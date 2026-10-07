@@ -215,3 +215,5 @@ button.small { font-size: 11px; }
   border: 1px dashed var(--muted); padding: 0 6px;
 }
 .assign-actions { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; margin-top: 4px; }
+
+.notice-bar { background: var(--accent-soft); color: var(--text); padding: 6px 16px; cursor: pointer; border-bottom: 1px solid var(--border); }
