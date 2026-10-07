@@ -53,6 +53,22 @@ function csvCell(s: string) {
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // クリップボード API が使えない環境向け
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+}
+
 export default function App() {
   const [folder, setFolder] = useState<OpenedFolder | null>(null);
   const [data, setData] = useState<LabelData>(emptyData);
@@ -64,6 +80,7 @@ export default function App() {
   const [newLabelName, setNewLabelName] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [copied, setCopied] = useState("");
   const [writable, setWritable] = useState(true);
   const folderInput = useRef<HTMLInputElement>(null);
   const importInput = useRef<HTMLInputElement>(null);
@@ -219,6 +236,13 @@ export default function App() {
     if (targets.length === 0) return;
     change(setManual(targets, value));
   };
+  /** 名前をコピーし、少しの間「コピーしました」を出す */
+  const copy = async (text: string, key: string) => {
+    await copyText(text);
+    setCopied(key);
+    setTimeout(() => setCopied((k) => (k === key ? "" : k)), 1500);
+  };
+
   const allTargetsManual = targets.length > 0 && targets.every((p) => manualSet.has(p));
 
   const onAddLabel = () => {
@@ -534,6 +558,16 @@ export default function App() {
                         onChange={() => toggleChecked(p)}
                       />
                       <span className="ext">{extOf(p)}</span>
+                      <button
+                        className="icon copy-btn"
+                        title="ファイル名をコピー"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copy(fileName(p), `row:${p}`);
+                        }}
+                      >
+                        {copied === `row:${p}` ? "✓" : "⧉"}
+                      </button>
                       <span className="path" title={p}>
                         <span className="dir">{p.slice(0, p.lastIndexOf("/") + 1)}</span>
                         {p.slice(p.lastIndexOf("/") + 1)}
@@ -565,11 +599,27 @@ export default function App() {
               {checked.size > 0 ? (
                 <strong>チェックした {checked.size} 件にラベルを付ける</strong>
               ) : selected ? (
-                <strong title={selected}>{selected.split("/").pop()}</strong>
+                <strong title={selected}>{fileName(selected)}</strong>
               ) : (
                 <span className="muted">ファイル未選択</span>
               )}
             </div>
+            {targets.length > 0 && (
+              <div className="copy-actions">
+                <button
+                  className="link small"
+                  onClick={() => copy(targets.map(fileName).join("\n"), "name")}
+                >
+                  {copied === "name" ? "コピーしました" : targets.length > 1 ? `${targets.length} 件の名前をコピー` : "名前をコピー"}
+                </button>
+                <button
+                  className="link small"
+                  onClick={() => copy(targets.map((p) => `${folder?.name ?? ""}/${p}`).join("\n"), "path")}
+                >
+                  {copied === "path" ? "コピーしました" : targets.length > 1 ? `${targets.length} 件のパスをコピー` : "パスをコピー"}
+                </button>
+              </div>
+            )}
             <div className="chips">
               {labels.map((l, i) => {
                 const state = targetLabelState(l.name);

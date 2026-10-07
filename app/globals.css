@@ -217,3 +217,8 @@ button.small { font-size: 11px; }
 .assign-actions { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; margin-top: 4px; }
 
 .notice-bar { background: var(--accent-soft); color: var(--text); padding: 6px 16px; cursor: pointer; border-bottom: 1px solid var(--border); }
+
+.copy-btn { padding: 0 4px; font-size: 13px; opacity: 0; flex-shrink: 0; }
+.file-row:hover .copy-btn, .file-row.selected .copy-btn, .copy-btn:focus-visible { opacity: 1; }
+.copy-actions { display: flex; gap: 16px; margin: 2px 0 4px; }
+@media (hover: none) { .copy-btn { opacity: 1; } }
