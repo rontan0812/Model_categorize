@@ -222,3 +222,7 @@ button.small { font-size: 11px; }
 .file-row:hover .copy-btn, .file-row.selected .copy-btn, .copy-btn:focus-visible { opacity: 1; }
 .copy-actions { display: flex; gap: 16px; margin: 2px 0 4px; }
 @media (hover: none) { .copy-btn { opacity: 1; } }
+
+/* ドラッグでの複数選択中は文字が選択されないようにする */
+.file-list { user-select: none; }
+body.drag-selecting, body.drag-selecting * { cursor: ns-resize; }

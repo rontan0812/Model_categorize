@@ -307,6 +307,71 @@ export default function App() {
       return next;
     });
 
+  // ドラッグで範囲をまとめてチェックする。押した行がチェック済みなら、ドラッグした範囲のチェックを外す
+  const drag = useRef<{ anchor: number; add: boolean; base: Set<string> } | null>(null);
+  const onRowPointerDown = (e: React.PointerEvent, index: number) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("input, button")) return;
+    drag.current = { anchor: index, add: !checked.has(visible[index]), base: new Set(checked) };
+  };
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const d = drag.current;
+      const list = listRef.current;
+      if (!d || !list) return;
+      // リストの上下の端に来たらスクロールする
+      const rect = list.getBoundingClientRect();
+      if (e.clientY < rect.top + 24) list.scrollTop -= 12;
+      else if (e.clientY > rect.bottom - 24) list.scrollTop += 12;
+      const y = Math.min(Math.max(e.clientY, rect.top + 1), rect.bottom - 1);
+      const row = document.elementFromPoint(rect.left + 8, y)?.closest<HTMLElement>("[data-path]");
+      const index = row ? visible.indexOf(row.dataset.path!) : -1;
+      if (index < 0 || (index === d.anchor && !document.body.classList.contains("drag-selecting"))) return;
+      document.body.classList.add("drag-selecting");
+      const next = new Set(d.base);
+      for (let i = Math.min(d.anchor, index); i <= Math.max(d.anchor, index); i++) {
+        if (d.add) next.add(visible[i]);
+        else next.delete(visible[i]);
+      }
+      setChecked(next);
+    };
+    const onUp = () => {
+      drag.current = null;
+      // ドラッグ直後の click で選択が切り替わらないよう、少し遅らせて解除する
+      setTimeout(() => document.body.classList.remove("drag-selecting"), 0);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [visible]);
+
+  // Shift+クリックで、前にクリックした行からの範囲をチェック
+  const lastClicked = useRef<string | null>(null);
+  const onRowClick = (e: React.MouseEvent, p: string) => {
+    if (document.body.classList.contains("drag-selecting")) return;
+    if (e.shiftKey && lastClicked.current) {
+      const a = visible.indexOf(lastClicked.current);
+      const b = visible.indexOf(p);
+      if (a >= 0 && b >= 0) {
+        setChecked((prev) => {
+          const next = new Set(prev);
+          for (let i = Math.min(a, b); i <= Math.max(a, b); i++) next.add(visible[i]);
+          return next;
+        });
+        return;
+      }
+    }
+    if (e.ctrlKey || e.metaKey) {
+      toggleChecked(p);
+      lastClicked.current = p;
+      return;
+    }
+    lastClicked.current = p;
+    setSelected(p);
+  };
+
   const allVisibleChecked = visible.length > 0 && visible.every((p) => checked.has(p));
   const toggleAllVisible = () => setChecked(allVisibleChecked ? new Set() : new Set(visible));
 
@@ -542,14 +607,15 @@ export default function App() {
                 {checked.size > 0 && <button className="link" onClick={() => setChecked(new Set())}>チェック解除</button>}
               </div>
               <div className="file-list" ref={listRef}>
-                {visible.map((p) => {
+                {visible.map((p, index) => {
                   const f = folder!.files.get(p)!;
                   return (
                     <div
                       key={p}
                       data-path={p}
                       className={`file-row ${p === selected ? "selected" : ""} ${checked.has(p) ? "checked" : ""}`}
-                      onClick={() => setSelected(p)}
+                      onClick={(e) => onRowClick(e, p)}
+                      onPointerDown={(e) => onRowPointerDown(e, index)}
                     >
                       <input
                         type="checkbox"
