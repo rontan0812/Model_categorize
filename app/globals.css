@@ -209,14 +209,3 @@ button.small { font-size: 11px; }
 .clip-controls { display: inline-flex; align-items: center; gap: 4px; }
 .clip-controls input[type="range"] { width: 120px; }
 .measure { color: var(--danger); font-weight: 600; }
-
-.viewer-thumb {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 12px; padding: 16px;
-  background: var(--viewer-bg); text-align: center;
-}
-.viewer-thumb img {
-  width: 256px; max-width: 100%; max-height: 75%; object-fit: contain;
-  image-rendering: auto; border-radius: 6px; box-shadow: 0 2px 12px rgb(0 0 0 / 0.15);
-}
-.viewer-thumb p { max-width: 420px; margin: 0; }

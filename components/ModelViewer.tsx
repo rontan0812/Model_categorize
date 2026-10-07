@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { readBlendThumbnail, thumbnailToDataUrl } from "@/lib/blend";
-import { extOf, loadModel, modelStats } from "@/lib/models";
+import { loadModel, modelStats } from "@/lib/models";
 
 type Stats = ReturnType<typeof modelStats>;
 type Axis = "x" | "y" | "z";
@@ -120,8 +119,6 @@ export default function ModelViewer({
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
-  // Blender ファイルは 3D 表示できないので、埋め込みサムネイルを表示する
-  const [thumb, setThumb] = useState<string | null>(null);
   const [parts, setParts] = useState<Part[]>([]);
   const [showParts, setShowParts] = useState(false);
   const [wireframe, setWireframe] = useState(false);
@@ -205,7 +202,6 @@ export default function ModelViewer({
     setMeasurePts([]);
     setColorize(false);
     setError("");
-    setThumb(null);
     if (!path) {
       setStatus("idle");
       return;
@@ -214,24 +210,6 @@ export default function ModelViewer({
     let cancelled = false;
     let disposeUrls = () => {};
     setStatus("loading");
-
-    if (extOf(path) === "blend") {
-      readBlendThumbnail(files.get(path)!)
-        .then((t) => {
-          if (cancelled) return;
-          if (!t) throw new Error("このファイルにはサムネイルが保存されていません（Blender ファイルは 3D 表示できず、保存時のサムネイルのみ表示します）");
-          setThumb(thumbnailToDataUrl(t));
-          setStatus("idle");
-        })
-        .catch((e: unknown) => {
-          if (cancelled) return;
-          setError(e instanceof Error ? e.message : String(e));
-          setStatus("error");
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
     loadModel(path, files)
       .then(({ object: loaded, dispose }) => {
         disposeUrls = dispose;
@@ -410,16 +388,6 @@ export default function ModelViewer({
     <div className="viewer">
       <div ref={mountRef} className={`viewer-canvas ${measuring ? "measuring" : ""}`} />
       {!path && <div className="viewer-overlay">ファイルを選択するとプレビューします</div>}
-      {thumb && (
-        <div className="viewer-thumb">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={thumb} alt="Blender ファイルのサムネイル" />
-          <p className="muted small">
-            Blender ファイルは 3D 表示できないため、保存時のサムネイルを表示しています。
-            回転などをしたい場合は、Blender から glTF (.glb) で書き出してください。
-          </p>
-        </div>
-      )}
       {status === "loading" && <div className="viewer-overlay">読み込み中…</div>}
       {status === "error" && <div className="viewer-overlay error">表示できません: {error}</div>}
 

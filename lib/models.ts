@@ -10,8 +10,7 @@ import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
 import { Rhino3dmLoader } from "three/addons/loaders/3DMLoader.js";
 
 /** 一覧に表示する 3D モデルの拡張子 */
-// "blend" は 3D 表示できず、サムネイル表示のみ（lib/blend.ts）
-export const MODEL_EXTENSIONS = ["stl", "obj", "fbx", "gltf", "glb", "ply", "3mf", "dae", "3dm", "blend"] as const;
+export const MODEL_EXTENSIONS = ["stl", "obj", "fbx", "gltf", "glb", "ply", "3mf", "dae", "3dm"] as const;
 
 // Rhino (.3dm) の読み込みには rhino3dm (WebAssembly) を使う。
 // ビルド時に public/rhino3dm へコピーしたもの（scripts/copy-rhino3dm.mjs）を読み込む。
