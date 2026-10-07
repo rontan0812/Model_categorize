@@ -96,7 +96,9 @@ export async function loadModel(
   const dispose = () => blobUrls.forEach((u) => URL.revokeObjectURL(u));
 
   const meshFromGeometry = (geometry: THREE.BufferGeometry) => {
-    if (!geometry.attributes.normal) geometry.computeVertexNormals();
+    // 法線が無い・すべて 0 で書き出されたファイルは真っ黒になるので計算し直す
+    const normal = geometry.attributes.normal;
+    if (!normal || !(normal.array as Float32Array).some((v) => v !== 0)) geometry.computeVertexNormals();
     const hasColor = !!geometry.attributes.color;
     const material = new THREE.MeshStandardMaterial({
       color: hasColor ? 0xffffff : 0xb8c4d6,

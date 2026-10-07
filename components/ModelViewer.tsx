@@ -51,6 +51,42 @@ function collectParts(object: THREE.Object3D): Part[] {
   }));
 }
 
+/**
+ * モデルを原点付近に移す。
+ * 座標が原点から遠いモデル（CAD データなど）を object.position でずらすだけだと、
+ * GPU の計算精度が足りずに回転中に形が震えるので、その場合は頂点座標そのものを書き換える。
+ */
+function recenter(object: THREE.Object3D, offset: THREE.Vector3, radius: number): THREE.Object3D {
+  if (offset.length() < radius * 10) {
+    object.position.sub(offset);
+    return object;
+  }
+  object.updateMatrixWorld(true);
+  const shift = new THREE.Matrix4().makeTranslation(-offset.x, -offset.y, -offset.z);
+  const drawables: THREE.Object3D[] = [];
+  object.traverse((o) => {
+    if (isDrawable(o) && !(o as THREE.SkinnedMesh).isSkinnedMesh) drawables.push(o);
+  });
+  const flat = new THREE.Group();
+  const oldGeometries = new Set<THREE.BufferGeometry>();
+  for (const o of drawables) {
+    const mesh = o as THREE.Mesh;
+    // 部品一覧で使う名前を、親から外す前に控えておく
+    o.userData.partName ||= o.name || o.parent?.name || "";
+    const shown = isShown(o);
+    oldGeometries.add(mesh.geometry);
+    mesh.geometry = mesh.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(shift, o.matrixWorld));
+    o.removeFromParent();
+    o.position.set(0, 0, 0);
+    o.quaternion.identity();
+    o.scale.set(1, 1, 1);
+    o.visible = shown;
+    flat.add(o);
+  }
+  for (const g of oldGeometries) g.dispose();
+  return flat;
+}
+
 /** 親も含めて表示されているか */
 function isShown(o: THREE.Object3D | null): boolean {
   for (; o; o = o.parent) if (!o.visible) return false;
@@ -175,18 +211,21 @@ export default function ModelViewer({
     let disposeUrls = () => {};
     setStatus("loading");
     loadModel(path, files)
-      .then(({ object, dispose }) => {
+      .then(({ object: loaded, dispose }) => {
         disposeUrls = dispose;
         if (cancelled) {
-          disposeObject(object);
+          disposeObject(loaded);
           return;
         }
         // 原点に置き、床に接地させてカメラを合わせる
-        const box = new THREE.Box3().setFromObject(object);
+        const box = new THREE.Box3().setFromObject(loaded);
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
-        object.position.sub(new THREE.Vector3(center.x, box.min.y, center.z));
         const radius = Math.max(size.length() / 2, 1e-6);
+        const object = recenter(loaded, new THREE.Vector3(center.x, box.min.y, center.z), radius);
+
+        // 床のグリッドは、モデルの底面とちらつかないよう少しだけ下げる
+        c.grid.position.y = -radius * 0.002;
 
         c.grid.scale.setScalar(radius * 1.5);
         c.camera.near = radius / 100;
